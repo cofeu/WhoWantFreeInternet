@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "WWFI Client",
+  "version": "0.1.0",
+  "description": "WWFI identity, routing and policy client: proves device identity on every request to WWFI domains and enforces per-domain policy.",
+  "permissions": [
+    "storage",
+    "webRequest",
+    "webRequestBlocking",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://*/*",
+    "https://*/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "WWFI Client"
+  },
+  "options_page": "options/options.html",
+  "icons": {}
+}

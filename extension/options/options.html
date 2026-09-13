@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WWFI Client — Options</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <main>
+    <h1>WWFI Client — Options</h1>
+
+    <label class="field">
+      <span>Enabled</span>
+      <input type="checkbox" id="enabled">
+    </label>
+
+    <label class="field">
+      <span>WWFI control API — your local mesh node's name plane (e.g. http://127.0.0.1:8123)</span>
+      <input type="text" id="gateway" placeholder="http://127.0.0.1:8123">
+    </label>
+
+    <label class="field">
+      <span>API bearer token (WWFI dashboard / registry)</span>
+      <input type="password" id="token" placeholder="paste token">
+    </label>
+
+    <label class="field">
+      <span>Enforce policy (block unknown WWFI-ish hosts)</span>
+      <input type="checkbox" id="enforcePolicy">
+    </label>
+
+    <label class="field">
+      <span>Routing pins — JSON: {"cofeu.org": {"host": "127.0.0.1", "port": 443}}</span>
+      <textarea id="pin" rows="3" placeholder="{&quot;cofeu.org&quot;: {&quot;host&quot;: &quot;127.0.0.1&quot;, &quot;port&quot;: 443}}"></textarea>
+    </label>
+
+    <div class="actions">
+      <button id="save">Save</button>
+      <button id="sync">Sync registry now</button>
+      <button id="reset" class="danger">Reset</button>
+    </div>
+    <p id="msg" class="muted"></p>
+  </main>
+  <script src="options.js"></script>
+</body>
+</html>

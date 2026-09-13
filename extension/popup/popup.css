@@ -1,0 +1,41 @@
+/* WWFI popup styles */
+:root {
+  --bg: #10131a;
+  --panel: #1c2230;
+  --fg: #e8e8e8;
+  --muted: #8b94a7;
+  --ok: #7fdb5a;
+  --bad: #ff5f57;
+  --accent: #c792ea;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  width: 300px;
+  font: 13px/1.5 ui-sans-serif, system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--panel);
+}
+h1 { font-size: 15px; margin: 0; }
+h2 { font-size: 12px; margin: 0 0 4px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+section { padding: 8px 12px; border-top: 1px solid #222a3a; }
+footer { padding: 8px 12px; border-top: 1px solid #222a3a; }
+a { color: var(--accent); text-decoration: none; }
+code { background: #11161f; padding: 1px 5px; border-radius: 4px; color: var(--accent); font-size: 11px; }
+.switch { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.row { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+.badge { padding: 1px 8px; border-radius: 999px; font-size: 11px; }
+.badge.on { background: #17301d; color: var(--ok); }
+.badge.off { background: #331413; color: var(--bad); }
+ul { list-style: none; margin: 0; padding: 0; }
+li { padding: 2px 0; display: flex; justify-content: space-between; }
+.muted { color: var(--muted); font-style: italic; }
+button { background: var(--panel); color: var(--fg); border: 1px solid #2a3350; border-radius: 6px; cursor: pointer; font: inherit; }
+#refresh { border: 0; background: transparent; color: var(--accent); font-size: 14px; }

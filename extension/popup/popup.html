@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>WWFI Client</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header>
+    <h1>WWFI Client</h1>
+    <label class="switch">
+      <input type="checkbox" id="toggle">
+      <span>Enabled</span>
+    </label>
+  </header>
+
+  <section>
+    <div class="row"><span>Identity</span><code id="fp">…</code></div>
+    <div class="row"><span>Gateway</span><code id="gw">—</code></div>
+    <div class="row"><span>State</span><span id="state" class="badge">off</span></div>
+  </section>
+
+  <section>
+    <h2>Served domains <button id="refresh" title="refresh from gateway">↻</button></h2>
+    <ul id="domains"><li class="muted">no registry yet</li></ul>
+  </section>
+
+  <section>
+    <h2>Recent denials</h2>
+    <ul id="deny"><li class="muted">none</li></ul>
+  </section>
+
+  <footer>
+    <a href="../options/options.html">Settings</a>
+  </footer>
+  <script src="../lib/identity.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

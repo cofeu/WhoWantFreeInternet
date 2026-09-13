@@ -67,8 +67,8 @@ case "$MODE" in
     exit 1 ;;
 esac
 
-echo "[acme] copy issued certificates into the WWFI cert dir"
-CERT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/certs"
+echo "[acme] copy issued certificates into the WWFI cert dir (certs/acme/)"
+CERT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/certs/acme"
 mkdir -p "$CERT_DIR"
 for d in "${CERT_ARGS[@]}"; do
   main="${d#\*.}"

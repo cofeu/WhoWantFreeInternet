@@ -1,0 +1,21 @@
+[Unit]
+Description=WWFI mesh node (resolver + encrypted network node + domain admin)
+After=network-online.target wwfi-dns.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=3
+WorkingDirectory=/opt/wwfi
+# For public deployment (e.g. Oracle): --control-address 0.0.0.0:8123 + --token
+# Generate the token once: python3 scripts/wwfi_mesh_node.py admin init
+ExecStart=/opt/wwfi/.venv/bin/python scripts/wwfi_mesh_node.py node --state /etc/wwfi/mesh.json --bind-address 0.0.0.0:9443
+ProtectSystem=strict
+ProtectHome=true
+NoNewPrivileges=true
+PrivateTmp=true
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
