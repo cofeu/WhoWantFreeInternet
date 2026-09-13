@@ -1,0 +1,21 @@
+[Unit]
+Description=WWFI local DNS refresh service
+Documentation=https://github.com/USERNAME/WhoWantFreeInternet
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/wwfi
+ExecStart=/opt/wwfi/.venv/bin/python /opt/wwfi/scripts/wwfi_background_service.py
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/tmp /var/lib/wwfi
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=WWFI HTTPS demo server for cofeu.org
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/yusufprompt/WhoWantFreeInternet
+ExecStart=/usr/bin/python3 /home/yusufprompt/WhoWantFreeInternet/scripts/https_serve.py --domain cofeu.org --host 127.0.0.1 --port 443
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

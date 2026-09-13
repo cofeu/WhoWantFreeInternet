@@ -1,0 +1,54 @@
+services:
+  wwfi:
+    build: .
+    image: wwfi:0.2.0
+    container_name: wwfi-core
+    environment:
+      WWFI_TOKEN: "${WWFI_TOKEN:-demo-token}"
+    ports:
+      - "8000:8000"
+      - "8087:8087"
+      - "9090:9090"
+    volumes:
+      - wwfi_config:/data/config
+      - wwfi_certs:/opt/wwfi/certs
+      - ./configs:/opt/wwfi/configs:ro
+    healthcheck:
+      test: ["CMD", "bash", "/opt/wwfi/scripts/healthcheck.sh"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    restart: unless-stopped
+
+  dnsmasq:
+    image: jpillora/dnsmasq:latest
+    container_name: wwfi-dnsmasq
+    ports:
+      - "53:53/udp"
+      - "5380:8080"
+    volumes:
+      - ./configs/dnsmasq.conf:/etc/dnsmasq.conf:ro
+    environment:
+      HTTP_USER: "wwfi"
+      HTTP_PASS: "${DNSMASQ_WEB_PASS:-wwfi-demo}"
+    depends_on:
+      - wwfi
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: wwfi-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./configs/nginx/wwwfi.conf:/etc/nginx/conf.d/wwwfi.conf:ro
+      - ./configs/sites-available:/etc/nginx/sites-enabled:ro
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      - wwfi
+    restart: unless-stopped
+
+volumes:
+  wwfi_config:
+  wwfi_certs:

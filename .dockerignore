@@ -1,0 +1,31 @@
+# Git / version control
+.git
+.gitignore
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Tests and docs (not shipped in the image)
+tests/
+docs/
+monitoring/
+terraform/
+systemd/
+cloud-init.yaml
+LOCAL_DNS_SETUP.md
+
+# Machine-specific state (regenerated at runtime / host side)
+certs/
+configs/sites-available/
+configs/sites-enabled/
+
+# Secrets
+*.key
+*.pem
+
+# Archives
+*.tar.gz

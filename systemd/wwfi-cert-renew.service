@@ -1,0 +1,9 @@
+[Unit]
+Description=WWFI certificate renewal and rotation
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/wwfi
+ExecStart=/opt/wwfi/scripts/rotate_certificates.sh
+User=www-data
+Environment=CERT_DIR=/var/lib/wwfi/certs

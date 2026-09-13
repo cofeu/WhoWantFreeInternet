@@ -1,0 +1,41 @@
+groups:
+  - name: wwfi
+    rules:
+      - alert: WWFICertificateExpiring
+        expr: wwfi_cert_expiring == 1
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "WWFI certificate for {{ $labels.domain }} expiring soon"
+          description: "Certificate for {{ $labels.domain }} has less than 30 days remaining and must be renewed."
+
+      - alert: WWFICertificateExpired
+        expr: wwfi_cert_days_remaining < 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "WWFI certificate for {{ $labels.domain }} has expired"
+          description: "Traffic for {{ $labels.domain }} is at risk. Rotate the certificate immediately."
+
+      - alert: WWFIRejectedSessionsHigh
+        expr: increase(wwfi_rejected_sessions_total[5m]) > 50
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High number of rejected sessions"
+          description: "More than 50 sessions were rejected in the last 5 minutes. Possible scanning or credential misuse."
+
+      - alert: WWFIInstanceDown
+        expr: up{job="wwfi"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "WWFI metrics endpoint is down"
+          description: "The WWFI node {{ $labels.instance }} is not reporting metrics."

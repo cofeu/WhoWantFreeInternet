@@ -1,0 +1,28 @@
+# Caddyfile template for WWFI — Caddy issues and renews ACME certs automatically.
+# Docs: https://caddyserver.com/docs/automatic-https
+
+demo.example.com {
+    tls {
+        protocols TLSv1.2 TLSv1.3
+    }
+    reverse_proxy 127.0.0.1:8000
+}
+
+shop.example.com {
+    tls {
+        protocols TLSv1.2 TLSv1.3
+    }
+    reverse_proxy 127.0.0.1:8080
+}
+
+# mTLS example (client certificates signed by WWFI CA):
+# secure.example.com {
+#     tls {
+#         protocols TLSv1.2 TLSv1.3
+#         client_auth {
+#             trusted_ca_cert /etc/wwfi/ca.crt
+#             mode require_and_verify
+#         }
+#     }
+#     reverse_proxy 127.0.0.1:8000
+# }

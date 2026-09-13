@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wwfi"
+version = "0.2.0"
+description = "WWFI local-first encrypted network prototype"
+readme = "README"
+requires-python = ">=3.10"
+dependencies = ["cryptography>=42.0.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0.0"]
+web = ["flask>=3.0.0"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,83 @@
+{
+  "title": "WWFI Overview",
+  "uid": "wwfi-overview",
+  "editable": false,
+  "tags": ["wwfi", "network"],
+  "timezone": "browser",
+  "refresh": "15s",
+  "time": { "from": "now-1h", "to": "now" },
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": "Prometheus",
+        "query": "label_values(wwfi_published_domains, instance)"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Published Domains",
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(wwfi_published_domains{instance=\"total\"})",
+          "legendFormat": "domains"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Active Sessions",
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(wwfi_active_sessions{instance=~\"$instance\"})",
+          "legendFormat": "sessions"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Rejected Sessions (total)",
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(wwfi_rejected_sessions_total{instance=~\"$instance\"})",
+          "legendFormat": "rejected"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Certificate Days Remaining",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "targets": [
+        {
+          "expr": "wwfi_cert_days_remaining{instance=~\"$instance\"}",
+          "legendFormat": "{{domain}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "Rejected Sessions per 5m",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "targets": [
+        {
+          "expr": "increase(wwfi_rejected_sessions_total{instance=~\"$instance\"}[5m])",
+          "legendFormat": "rejected/5m"
+        }
+      ]
+    }
+  ],
+  "schemaVersion": 39,
+  "version": 1
+}

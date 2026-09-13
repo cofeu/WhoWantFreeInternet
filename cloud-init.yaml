@@ -1,0 +1,66 @@
+#cloud-config
+# WWFI OCI cloud-init user-data.
+# Bootstraps a compute instance into a running WWFI node:
+#   1. installs system packages
+#   2. clones the WWFI repository
+#   3. creates a venv and runs scripts/install.sh
+#   4. registers the wwfi-dns systemd unit and reverse proxy config
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - git
+  - python3
+  - python3-venv
+  - python3-pip
+  - dnsmasq
+  - nginx
+  - openssl
+  - curl
+  - certbot
+
+write_files:
+  - path: /etc/systemd/system/wwfi-dns.service
+    content: |
+      [Unit]
+      Description=WWFI local DNS refresh service
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=www-data
+      Group=www-data
+      WorkingDirectory=/opt/wwfi
+      ExecStart=/opt/wwfi/.venv/bin/python /opt/wwfi/scripts/wwfi_background_service.py
+      Restart=on-failure
+      RestartSec=5
+      NoNewPrivileges=true
+      ProtectSystem=full
+      ProtectHome=true
+      ReadWritePaths=/tmp /var/lib/wwfi
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /etc/dnsmasq.d/wwfi.conf
+    content: |
+      address=/demo.local/127.0.0.1
+      address=/shop.local/127.0.0.1
+      server=8.8.8.8
+      server=1.1.1.1
+
+runcmd:
+  - mkdir -p /var/lib/wwfi/dns /var/lib/wwfi/backups
+  - git clone https://github.com/USERNAME/WhoWantFreeInternet.git /opt/wwfi
+  - cd /opt/wwfi && bash scripts/install.sh
+  - systemctl daemon-reload
+  - systemctl enable --now wwfi-dns
+  - systemctl enable --now dnsmasq || service dnsmasq start || true
+  - systemctl enable --now nginx || true
+  - bash /opt/wwfi/scripts/https_domain_setup.sh demo || true
+  - bash /opt/wwfi/scripts/generate_reverse_proxy.sh --base-dir /opt/wwfi --reload demo.local=127.0.0.1:8000 shop.local=127.0.0.1:8080 || true
+  - systemctl restart nginx || true
+
+final_message: "WWFI node ready on this instance"
