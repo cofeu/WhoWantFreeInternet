@@ -21,6 +21,8 @@ The core principle:
 
 ### Option A — full local install (DNS + CA trust)
 
+**Linux / macOS** (bash):
+
 ```bash
 git clone https://github.com/cofeu/WhoWantFreeInternet.git
 cd WhoWantFreeInternet
@@ -28,22 +30,36 @@ cd WhoWantFreeInternet
 bash scripts/install.sh
 ```
 
-`scripts/install.sh` automatically:
+- **Linux**: installs/configures `dnsmasq`, generates the **WWFI Local Root CA**
+  if missing, installs it into the system trust store and NSS db, restarts
+  dnsmasq so records apply without rebooting, and never touches
+  `/etc/resolv.conf`, DHCP serving, or upstream forwarding.
+- **macOS**: uses Homebrew for `dnsmasq`, binds it via `brew services`
+  (as root so it can open port 53), points macOS resolvers at `127.0.0.1`
+  (`networksetup`, original DNS saved to `.dns_wwfi_backup`), and installs the
+  CA into the **system Keychain** (`security add-trusted-cert`) — Safari, Chrome,
+  and curl all trust every WWFI domain after one command.
 
-- creates a virtualenv and installs WWFI
-- installs and configures **dnsmasq** with local records
-  (`demo.local`, `shop.local`, `cofeu.org` → `127.0.0.1`)
-- restarts dnsmasq so records take effect without rebooting
-- generates the **WWFI Local Root CA** if missing and installs it into the
-  system trust store and the NSS database (~/.pki/nssdb) → `curl`, `git`,
-  Python, Chromium-based browsers, and NSS tools trust all WWFI domains
-- never touches `/etc/resolv.conf`, DHCP serving, or upstream forwarding
+**Windows** (PowerShell, run as Administrator):
 
-Remove everything it applies:
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1
+```
+
+Maps WWFI domains in the hosts file and adds the CA to the Windows **Root**
+certificate store (`certutil.exe`) — Edge/Chrome/IE trust all WWFI domains.
+
+Remove everything an installer applied:
 
 ```bash
 bash scripts/install.sh --uninstall
+# or Windows:
+powershell -ExecutionPolicy Bypass -File scripts/install.ps1 -Uninstall
 ```
+
+> Windows note: the hosts file maps exact names (no wildcards/ports). For a real
+> local DNS server on Windows use WSL2 (`bash scripts/install.sh` inside WSL) or
+> a DNS proxy such as Acrylic. macOS/Linux get a full dnsmasq resolver.
 
 ### Option B — Docker demo
 
@@ -68,10 +84,12 @@ Trust the CA **once** and every WWFI-signed domain is trusted automatically —
 
 | Store                          | Who reads it                                  | How it is installed                       |
 | ------------------------------ | --------------------------------------------- | ---------------------------------------- |
-| System (`/usr/local/share/ca-certificates`) | curl, git, Python, Docker | `scripts/install.sh` (automatic)         |
-| NSS (`~/.pki/nssdb`)           | Chromium-based browsers, NSS tools             | `scripts/install.sh` (automatic)         |
-| Google Chrome (own root store) | google-chrome                                  | one-time `chrome://settings/certificates` → **Authorities** → Import `certs/ca.crt` |
-| Firefox (profile store)        | firefox                                        | Firefox policy `Certificates.ImportEnterpriseRoots` or manual import |
+| System (`/usr/local/share/ca-certificates`) | curl, git, Python, Docker (Linux)             | `scripts/install.sh` (automatic)         |
+| NSS (`~/.pki/nssdb`)           | Chromium-based browsers, NSS tools (Linux)    | `scripts/install.sh` (automatic)         |
+| macOS system Keychain          | Safari, Chrome, curl, most macOS apps         | `scripts/install.sh` (automatic)         |
+| Windows Root store             | Edge, Chrome, IE (Windows)                    | `scripts/install.ps1` (automatic)        |
+| Google Chrome (own root store) | google-chrome on Linux                        | one-time `chrome://settings/certificates` → **Authorities** → Import `certs/ca.crt` |
+| Firefox (profile store)        | firefox                                       | Firefox policy `Certificates.ImportEnterpriseRoots` or manual import |
 
 For **public domains you control**, skip all of this: issue a real certificate
 with Let's Encrypt (`scripts/acme_tls_setup.sh`) and every browser in the world
@@ -116,7 +134,8 @@ Current result: **83 tests passed**.
 
 | Tool | Purpose |
 | ---- | ------- |
-| `scripts/install.sh` | venv + editable install + dnsmasq records + CA trust |
+| `scripts/install.sh` | venv + editable install + dnsmasq records + CA trust (Linux & macOS) |
+| `scripts/install.ps1` | Windows installer: venv + hosts mappings + Root cert store |
 | `scripts/https_serve.py` | HTTPS static server; auto-issues CA-signed certs for a domain |
 | `scripts/https_domain_setup.sh {acme\|demo}` | ACME Certbot or self-signed demo certs |
 | `scripts/acme_tls_setup.sh` | Let's Encrypt issuance (http01 / webroot / dns01) |

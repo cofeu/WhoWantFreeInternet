@@ -194,6 +194,26 @@ Remove everything applied by reinstalling DNS state:
 bash scripts/install.sh --uninstall
 ```
 
+### macOS
+
+`bash scripts/install.sh` detects Darwin and uses Homebrew:
+
+- `brew install dnsmasq`, records go to `$(brew --prefix)/etc/dnsmasq.d/wwfi.conf`
+- `sudo brew services start dnsmasq` (root so it may bind port 53)
+- macOS resolvers are pointed at `127.0.0.1` with `networksetup`; the previous
+  DNS per interface is saved to `.dns_wwfi_backup` and restored by `--uninstall`
+- the WWFI CA is added to the system Keychain (`security add-trusted-cert -r trustRoot`)
+
+### Windows
+
+`scripts/install.ps1` (run **as Administrator**) has no system DNS integration —
+it maps the exact WWFI domains in `%windir%\System32\drivers\etc\hosts`
+(`127.0.0.1 cofeu.org`) and adds the CA to the Windows **Root** store via
+`certutil.exe`, so Edge/Chrome/IE trust all WWFI-signed certs. Hosts entries
+have no wildcards or port mapping; for a full local DNS resolver on Windows use
+WSL2 (`bash scripts/install.sh` inside WSL) or a DNS proxy such as Acrylic.
+Revert with `-Uninstall`.
+
 ## HTTPS demo server + CA-signed certs
 
 `scripts/https_serve.py` serves a directory over HTTPS for a local domain and

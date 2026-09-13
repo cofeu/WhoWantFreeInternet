@@ -7,29 +7,10 @@ if [[ "${1:-}" == "--dry-run" ]]; then
   shift
 fi
 
-if [[ "${1:-}" == "--uninstall" ]]; then
-  echo "[wwfi-install] Removing WWFI DNS records"
-  run_cmd() {
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-      echo "DRY-RUN: $*"
-    else
-      "$@"
-    fi
-  }
-  run_cmd sudo rm -f /etc/dnsmasq.d/wwfi.conf
-  if command -v systemctl >/dev/null 2>&1; then
-    run_cmd sudo systemctl restart dnsmasq
-  else
-    run_cmd sudo service dnsmasq restart
-  fi
-  echo "[wwfi-install] WWFI DNS records removed; upstream DNS untouched"
-  exit 0
-fi
-
+OS="$(uname -s)"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="$ROOT_DIR/.venv"
 PYTHON_BIN="$VENV_DIR/bin/python"
-PIP_BIN="$VENV_DIR/bin/pip"
 
 log() {
   echo "[wwfi-install] $*"
@@ -42,6 +23,227 @@ run_cmd() {
     "$@"
   fi
 }
+
+wipe_dnsmasq_records_linux() {
+  run_cmd sudo rm -f /etc/dnsmasq.d/wwfi.conf
+  if command -v systemctl >/dev/null 2>&1; then
+    run_cmd sudo systemctl restart dnsmasq 2>/dev/null || true
+  fi
+  run_cmd sudo service dnsmasq restart 2>/dev/null || true
+}
+
+wipe_dnsmasq_records_darwin() {
+  local prefix main_conf
+  if command -v brew >/dev/null 2>&1; then
+    prefix="$(brew --prefix)"
+    main_conf="$prefix/etc/dnsmasq.conf"
+    run_cmd sudo rm -f "$prefix/etc/dnsmasq.d/wwfi.conf"
+    grep -q "^conf-dir=$prefix/etc/dnsmasq.d" "$main_conf" 2>/dev/null \
+      || run_cmd sudo sed -i.bak "/^conf-dir=$prefix\/etc\/dnsmasq.d/d" "$main_conf"
+    run_cmd sudo brew services stop dnsmasq
+  fi
+}
+
+restore_macos_dns() {
+  local backup="$ROOT_DIR/.dns_wwfi_backup"
+  [[ -f "$backup" ]] || return 0
+  while IFS='=' read -r svc servers; do
+    [[ -z "$svc" ]] && continue
+    if [[ "$servers" == "Empty" ]]; then
+      run_cmd sudo networksetup -setdnsservers "$svc" Empty
+    else
+      # shellcheck disable=SC2086
+      run_cmd sudo networksetup -setdnsservers "$svc" $servers
+    fi
+  done <"$backup"
+  run_cmd rm -f "$backup"
+  log "macOS DNS restored from backup"
+}
+
+install_dns_darwin() {
+  local prefix main_conf d_conf svc old_dns backup="$ROOT_DIR/.dns_wwfi_backup"
+  if ! command -v brew >/dev/null 2>&1; then
+    log "Homebrew not found. Install it first: https://brew.sh (or: /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\")"
+    exit 1
+  fi
+  log "Installing dnsmasq via Homebrew"
+  run_cmd brew install dnsmasq
+
+  prefix="$(brew --prefix)"
+  d_conf="$prefix/etc/dnsmasq.d"
+  main_conf="$prefix/etc/dnsmasq.conf"
+  run_cmd mkdir -p "$d_conf"
+  if ! grep -q "^conf-dir=$d_conf" "$main_conf" 2>/dev/null; then
+    log "Adding conf-dir to $main_conf"
+    printf '\n# WWFI require to load /etc/dnsmasq.d\nconf-dir=%s\n' "$d_conf" | run_cmd tee -a "$main_conf" >/dev/null
+  fi
+
+  log "Writing WWFI dnsmasq records ($d_conf/wwfi.conf)"
+  generate_dnsmasq_conf | run_cmd tee "$d_conf/wwfi.conf" >/dev/null
+
+  log "Starting dnsmasq (as root, so it may bind port 53)"
+  run_cmd sudo brew services start dnsmasq
+
+  log "Pointing macOS resolvers at 127.0.0.1 (backup saved to $backup)"
+  : >"$backup"
+  while IFS= read -r svc; do
+    [[ -z "$svc" || "$svc" == "*" ]] && continue
+    old_dns="$(networksetup -getdnsservers "$svc" 2>/dev/null | sed '/^$/d' | tr '\n' ' ' | sed 's/ *$//')"
+    [[ -z "$old_dns" ]] && old_dns="Empty"
+    echo "$svc=$old_dns" >>"$backup"
+    run_cmd sudo networksetup -setdnsservers "$svc" 127.0.0.1
+    log "  $svc: DNS -> 127.0.0.1 (was: $old_dns)"
+  done < <(networksetup -listallnetworkservices)
+
+  if command -v nslookup >/dev/null 2>&1 && nslookup demo.local 127.0.0.1 2>/dev/null | grep -q "127.0.0.1"; then
+    log "DNS records active: demo.local -> 127.0.0.1 (verified)"
+  else
+    log "Records written; confirm with: nslookup cofeu.org 127.0.0.1"
+  fi
+}
+
+install_dns_linux() {
+  if command -v apt-get >/dev/null 2>&1; then
+    log "Installing dnsmasq via apt"
+    run_cmd sudo apt-get update
+    run_cmd sudo apt-get install -y dnsmasq
+  elif command -v dnf >/dev/null 2>&1; then
+    log "Installing dnsmasq via dnf"
+    run_cmd sudo dnf install -y dnsmasq
+  elif command -v apk >/dev/null 2>&1; then
+    log "Installing dnsmasq via apk"
+    run_cmd sudo apk add --no-cache dnsmasq
+  else
+    log "No supported package manager found; skipping dnsmasq installation"
+    return 0
+  fi
+
+  log "Writing WWFI dnsmasq records"
+  run_cmd sudo mkdir -p /etc/dnsmasq.d
+  generate_dnsmasq_conf | run_cmd sudo tee /etc/dnsmasq.d/wwfi.conf >/dev/null
+
+  if command -v systemctl >/dev/null 2>&1; then
+    log "Applying DNS records (restarting dnsmasq)"
+    run_cmd sudo systemctl enable dnsmasq
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "DRY-RUN: sudo systemctl restart dnsmasq"
+    else
+      sudo systemctl restart dnsmasq || sudo service dnsmasq restart
+    fi
+  else
+    log "systemctl not available; restart dnsmasq manually to apply records"
+  fi
+
+  if command -v getent >/dev/null 2>&1 \
+    && getent hosts demo.local | grep -q "127.0.0.1"; then
+    log "DNS records active: demo.local -> 127.0.0.1 (verified)"
+  else
+    log "Records written; this host resolves via a different resolver, not the WWFI dnsmasq."
+    log "To resolve WWFI domains automatically, point client DNS at the WWFI host"
+    log "  (router DHCP option 6, or NetworkManager IPv4 DNS) - see docs/operations.md"
+  fi
+}
+
+generate_dnsmasq_conf() {
+  cat <<'EOF'
+# WWFI local address records (auto-generated by scripts/install.sh)
+# Records only: forwarding, DHCP and resolv.conf are left untouched.
+local-ttl=600
+EOF
+  local entry dom ip
+  WWFI_DNS_IP="${WWFI_DNS_IP:-127.0.0.1}"
+  WWFI_DOMAINS="${WWFI_DOMAINS:-demo.local shop.local cofeu.org}"
+  for entry in $WWFI_DOMAINS; do
+    dom="${entry%%=*}"
+    ip="${entry#*=}"
+    [[ "$ip" == "$dom" ]] && ip="$WWFI_DNS_IP"
+    echo "address=/$dom/$ip"
+  done
+  if [[ -f "$ROOT_DIR/configs/dnsmasq-records.conf" ]]; then
+    echo "# Extra records from configs/dnsmasq-records.conf"
+    cat "$ROOT_DIR/configs/dnsmasq-records.conf"
+  fi
+}
+
+trust_ca_linux() {
+  if [[ "${WWFI_SKIP_TRUST:-0}" == "1" ]]; then
+    log "WWFI_SKIP_TRUST=1 set; certificate trust provisioning skipped"
+    return 0
+  fi
+  if [[ -f "$ROOT_DIR/certs/ca.crt" ]]; then
+    log "Installing WWFI Local Root CA into system trust store"
+    run_cmd sudo cp "$ROOT_DIR/certs/ca.crt" /usr/local/share/ca-certificates/wwfi-ca.crt
+    run_cmd sudo update-ca-certificates
+  else
+    log "certs/ca.crt not found; system trust store skipped"
+  fi
+
+  local NSS_DB="${WWFI_NSS_DIR:-$HOME/.pki/nssdb}"
+  if command -v certutil >/dev/null 2>&1; then
+    log "Installing WWFI CA + site certificates into NSS database ($NSS_DB)"
+    if [[ "$DRY_RUN" -eq 1 ]]; then
+      echo "DRY-RUN: certutil -d sql:$NSS_DB -A -t C,, -n WWFI_CA"
+    else
+      mkdir -p "$NSS_DB"
+      certutil -d "sql:$NSS_DB" -L >/dev/null 2>&1 \
+        || certutil -d "sql:$NSS_DB" -N --empty-password
+      [[ -f "$ROOT_DIR/certs/ca.crt" ]] \
+        && certutil -d "sql:$NSS_DB" -A -t "C,," -n "WWFI Local Root CA" \
+          -i "$ROOT_DIR/certs/ca.crt" 2>/dev/null || true
+      for cert in cofeu.org.crt demo.local.crt; do
+        [[ -f "$ROOT_DIR/certs/$cert" ]] || continue
+        certutil -d "sql:$NSS_DB" -A -t "P,," -n "WWFI ${cert%.crt}" \
+          -i "$ROOT_DIR/certs/$cert" 2>/dev/null || true
+      done
+    fi
+  else
+    log "certutil not found; NSS (Firefox/Chromium) trust skipped - install libnss3-tools"
+  fi
+}
+
+trust_ca_darwin() {
+  if [[ "${WWFI_SKIP_TRUST:-0}" == "1" ]]; then
+    log "WWFI_SKIP_TRUST=1 set; certificate trust provisioning skipped"
+    return 0
+  fi
+  [[ -f "$ROOT_DIR/certs/ca.crt" ]] || { log "certs/ca.crt not found; trust skipped"; return 1; }
+  log "Installing WWFI Local Root CA into macOS system Keychain (trustRoot)"
+  run_cmd sudo security add-trusted-cert -d -r trustRoot \
+    -k /Library/Keychains/System.keychain "$ROOT_DIR/certs/ca.crt"
+  log "Keychain trust set -> Safari/Chrome/curl all trust every WWFI-signed domain."
+  log "Firefox keeps its own store: enable policy Certificates.ImportEnterpriseRoots or import manually."
+}
+
+ensure_root_ca() {
+  log "Ensuring WWFI root CA exists"
+  if [[ ! -f "$ROOT_DIR/certs/ca.crt" || ! -f "$ROOT_DIR/certs/ca.key" ]]; then
+    log "Generating WWFI Local Root CA in $ROOT_DIR/certs"
+    run_cmd mkdir -p "$ROOT_DIR/certs"
+    run_cmd openssl req -x509 -newkey rsa:3072 -nodes \
+      -keyout "$ROOT_DIR/certs/ca.key" -out "$ROOT_DIR/certs/ca.crt" \
+      -days 3650 -subj "/CN=WWFI Local Root CA" \
+      -addext "basicConstraints=critical,CA:TRUE" \
+      -addext "keyUsage=keyCertSign,cRLSign"
+    log "Root CA generated. Trust certs/ca.crt once and every WWFI-signed domain is unlocked."
+  else
+    log "Root CA already present in certs/"
+  fi
+}
+
+if [[ "${1:-}" == "--uninstall" ]]; then
+  echo "[wwfi-install] Removing WWFI DNS records"
+  if [[ "$OS" == "Darwin" ]]; then
+    wipe_dnsmasq_records_darwin
+    restore_macos_dns
+    if command -v security >/dev/null 2>&1; then
+      run_cmd sudo security delete-certificate -c "WWFI Local Root CA" 2>/dev/null || true
+    fi
+  else
+    wipe_dnsmasq_records_linux
+  fi
+  echo "[wwfi-install] WWFI DNS records removed; upstream DNS untouched"
+  exit 0
+fi
 
 log "Preparing WWFI installation in $ROOT_DIR"
 
@@ -56,121 +258,26 @@ run_cmd "$PYTHON_BIN" -m pip install --upgrade pip setuptools wheel
 log "Installing WWFI in editable mode"
 run_cmd "$PYTHON_BIN" -m pip install -e "$ROOT_DIR"
 
-if command -v apt-get >/dev/null 2>&1; then
-  log "Installing dnsmasq via apt"
-  run_cmd sudo apt-get update
-  run_cmd sudo apt-get install -y dnsmasq
-elif command -v dnf >/dev/null 2>&1; then
-  log "Installing dnsmasq via dnf"
-  run_cmd sudo dnf install -y dnsmasq
-elif command -v apk >/dev/null 2>&1; then
-  log "Installing dnsmasq via apk"
-  run_cmd sudo apk add --no-cache dnsmasq
+ensure_root_ca
+
+if [[ "$OS" == "Darwin" ]]; then
+  install_dns_darwin
+  trust_ca_darwin
 else
-  log "No supported package manager found; skipping dnsmasq installation"
-fi
-
-log "Writing WWFI dnsmasq records"
-run_cmd sudo mkdir -p /etc/dnsmasq.d
-{
-  cat <<'EOF'
-# WWFI local address records (auto-generated by scripts/install.sh)
-# Records only: forwarding, DHCP and resolv.conf are left untouched.
-local-ttl=600
-EOF
-  WWFI_DNS_IP="${WWFI_DNS_IP:-127.0.0.1}"
-  WWFI_DOMAINS="${WWFI_DOMAINS:-demo.local shop.local cofeu.org}"
-  for entry in $WWFI_DOMAINS; do
-    dom="${entry%%=*}"
-    ip="${entry#*=}"
-    [[ "$ip" == "$dom" ]] && ip="$WWFI_DNS_IP"
-    echo "address=/$dom/$ip"
-  done
-  if [[ -f "$ROOT_DIR/configs/dnsmasq-records.conf" ]]; then
-    echo "# Extra records from configs/dnsmasq-records.conf"
-    cat "$ROOT_DIR/configs/dnsmasq-records.conf"
-  fi
-} | run_cmd sudo tee /etc/dnsmasq.d/wwfi.conf >/dev/null
-
-if command -v systemctl >/dev/null 2>&1; then
-  log "Applying DNS records (restarting dnsmasq)"
-  run_cmd sudo systemctl enable dnsmasq
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "DRY-RUN: sudo systemctl restart dnsmasq"
-  else
-    sudo systemctl restart dnsmasq || sudo service dnsmasq restart
-  fi
-else
-  log "systemctl not available; restart dnsmasq manually to apply records"
-fi
-
-if command -v getent >/dev/null 2>&1 \
-  && getent hosts demo.local | grep -q "127.0.0.1"; then
-  log "DNS records active: demo.local -> 127.0.0.1 (verified)"
-else
-  log "Records written; this host resolves via a different resolver, not the WWFI dnsmasq."
-  log "To resolve WWFI domains automatically, point client DNS at the WWFI host"
-  log "  (router DHCP option 6, or NetworkManager IPv4 DNS) - see docs/operations.md"
-fi
-
-log "Ensuring WWFI root CA exists"
-if [[ ! -f "$ROOT_DIR/certs/ca.crt" || ! -f "$ROOT_DIR/certs/ca.key" ]]; then
-  log "Generating WWFI Local Root CA in $ROOT_DIR/certs"
-  run_cmd mkdir -p "$ROOT_DIR/certs"
-  run_cmd openssl req -x509 -newkey rsa:3072 -nodes \
-    -keyout "$ROOT_DIR/certs/ca.key" -out "$ROOT_DIR/certs/ca.crt" \
-    -days 3650 -subj "/CN=WWFI Local Root CA" \
-    -addext "basicConstraints=critical,CA:TRUE" \
-    -addext "keyUsage=keyCertSign,cRLSign"
-  log "Root CA generated. Trust certs/ca.crt once and every WWFI-signed domain is unlocked."
-else
-  log "Root CA already present in certs/"
-fi
-
-log "Provisioning WWFI certificate trust"
-
-if [[ "${WWFI_SKIP_TRUST:-0}" == "1" ]]; then
-  log "WWFI_SKIP_TRUST=1 set; certificate trust provisioning skipped"
-else
-  if [[ -f "$ROOT_DIR/certs/ca.crt" ]]; then
-    log "Installing WWFI Local Root CA into system trust store"
-    run_cmd sudo cp "$ROOT_DIR/certs/ca.crt" /usr/local/share/ca-certificates/wwfi-ca.crt
-    run_cmd sudo update-ca-certificates
-  else
-    log "certs/ca.crt not found; system trust store skipped"
-  fi
-
-  NSS_DB="${WWFI_NSS_DIR:-$HOME/.pki/nssdb}"
-  if command -v certutil >/dev/null 2>&1; then
-    log "Installing WWFI CA + site certificates into NSS database ($NSS_DB)"
-    if [[ "$DRY_RUN" -eq 1 ]]; then
-      echo "DRY-RUN: certutil -d sql:$NSS_DB -A -t C,, -n WWFI_CA"
-    else
-      mkdir -p "$NSS_DB"
-      certutil -d "sql:$NSS_DB" -L >/dev/null 2>&1 \
-        || certutil -d "sql:$NSS_DB" -N --empty-password
-      if [[ -f "$ROOT_DIR/certs/ca.crt" ]]; then
-        certutil -d "sql:$NSS_DB" -A -t "C,," -n "WWFI Local Root CA" \
-          -i "$ROOT_DIR/certs/ca.crt" 2>/dev/null || true
-      fi
-      for cert in cofeu.org.crt demo.local.crt; do
-        [[ -f "$ROOT_DIR/certs/$cert" ]] || continue
-        certutil -d "sql:$NSS_DB" -A -t "P,," -n "WWFI ${cert%.crt}" \
-          -i "$ROOT_DIR/certs/$cert" 2>/dev/null || true
-      done
-    fi
-  else
-    log "certutil not found; NSS (Firefox/Chromium) trust skipped - install libnss3-tools"
-  fi
+  install_dns_linux
+  trust_ca_linux
 fi
 
 log "WWFI install complete"
 log "Run: cd $ROOT_DIR && . .venv/bin/activate && PYTHONPATH=src pytest -q"
 log "Run: python scripts/wwfi_background_service.py"
 log ""
-log "Certificate trust installed for: system tools (curl/git), Firefox, Chromium-based browsers"
-if command -v google-chrome >/dev/null 2>&1; then
+if [[ "$OS" == "Darwin" ]]; then
+  log "Trust: macOS system Keychain -> all browsers except Firefox (see note above)."
+elif command -v google-chrome >/dev/null 2>&1; then
   log "Google Chrome uses its own root store: add once via"
   log "  chrome://settings/certificates -> Authorities tab -> Import certs/ca.crt"
   log "  or set 'CertificateAuthorities' in Chrome policy for the whole fleet."
+else
+  log "Certificate trust installed for: system tools (curl/git), Firefox, Chromium-based browsers"
 fi
